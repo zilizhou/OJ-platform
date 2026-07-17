@@ -1,0 +1,15 @@
+{
+  "name": "oj-platform",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @oj/api start:dev",
+    "dev:web": "pnpm --filter @oj/web dev",
+    "dev:judge": "pnpm --filter @oj/judge dev",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @oj/api prisma:migrate",
+    "db:seed": "pnpm --filter @oj/api prisma:seed"
+  },
+  "packageManager": "pnpm@9.0.0"
+}

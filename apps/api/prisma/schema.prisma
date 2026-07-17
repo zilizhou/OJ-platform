@@ -1,0 +1,200 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  SETTER   // 出题人:可建/改自己创建的题
+  ADMIN
+}
+
+enum SubmissionStatus {
+  Pending
+  Judging
+  AC
+  WA
+  TLE
+  MLE
+  RE
+  OLE
+  CE
+  SE
+}
+
+enum ContestRuleType {
+  ACM
+  IOI
+  OI
+}
+
+enum JudgeMode {
+  STANDARD
+  SPECIAL
+}
+
+enum PostKind {
+  DISCUSSION
+  EDITORIAL
+}
+
+model User {
+  id            Int                   @id @default(autoincrement())
+  username      String                @unique
+  email         String                @unique
+  passwordHash  String
+  role          Role                  @default(USER)
+  createdAt     DateTime              @default(now())
+  // 外部身份(知新芸 OAuth 等),本地账号留空
+  extProvider   String?               // 'zxy' = 知新芸
+  extId         String?               // 知新芸 user.id
+  extName       String?               // 知新芸 user.name(可能中文)
+  extSchool     String?
+  extRoles      String[]              @default([])
+  submissions   Submission[]
+  registrations ContestRegistration[]
+  posts         Post[]
+  comments      Comment[]
+
+  @@unique([extProvider, extId])
+}
+
+model Problem {
+  id             Int          @id @default(autoincrement())
+  title          String
+  description    String       // markdown
+  difficulty     Int          @default(1)
+  timeLimit      Int          @default(1000) // ms
+  memoryLimit    Int          @default(256)  // MB
+  tags           String[]     @default([])
+  sourcePlatform String?      // 'fps' / 'generic-zip' / 'luogu' / null=原创
+  sourceId       String?      // 平台原始题号
+  judgeMode      JudgeMode    @default(STANDARD)
+  spjLanguage    String?      // SPJ 语言 (目前仅 cpp)
+  spjCode        String?      // SPJ 源码 (argv: input expected user_output)
+  createdBy      Int?         // 出题人 userId,null = 老题/导入题
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  testcases       Testcase[]
+  submissions     Submission[]
+  contestProblems ContestProblem[]
+  posts           Post[]
+
+  @@unique([sourcePlatform, sourceId])
+}
+
+// 小测试点直接存 DB,大于 INLINE_THRESHOLD 走 MinIO,记录对象 key。
+// 读取时优先用 key,不存在再退回 input/expectedOutput 字段。
+model Testcase {
+  id                 Int     @id @default(autoincrement())
+  problem            Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  problemId          Int
+  input              String  @default("")
+  expectedOutput     String  @default("")
+  inputKey           String? // MinIO 对象 key
+  expectedOutputKey  String?
+  isSample           Boolean @default(false)
+  score              Int     @default(10)
+}
+
+model Submission {
+  id         Int              @id @default(autoincrement())
+  user       User             @relation(fields: [userId], references: [id])
+  userId     Int
+  problem    Problem          @relation(fields: [problemId], references: [id])
+  problemId  Int
+  contest    Contest?         @relation(fields: [contestId], references: [id])
+  contestId  Int?
+  language   String
+  code       String
+  status     SubmissionStatus @default(Pending)
+  timeUsed   Int?             // ms
+  memoryUsed Int?             // KB
+  detail     Json?
+  createdAt  DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([problemId, createdAt])
+  @@index([contestId, createdAt])
+}
+
+model Contest {
+  id             Int             @id @default(autoincrement())
+  title          String
+  description    String          @default("")
+  startTime      DateTime
+  endTime        DateTime
+  ruleType       ContestRuleType @default(ACM)
+  password       String?         // 可选加入密码 (明文,阶段四再加密)
+  createdBy      Int
+  freezeMinutes  Int             @default(0) // 距结束 N 分钟内的提交在榜上隐藏(ACM 封榜)
+  unfrozenAt     DateTime?       // 管理员解冻时间;赛后才能解
+  createdAt      DateTime        @default(now())
+
+  problems      ContestProblem[]
+  registrations ContestRegistration[]
+  submissions   Submission[]
+  posts         Post[]
+
+  @@index([startTime])
+}
+
+model ContestProblem {
+  contest   Contest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  contestId Int
+  problem   Problem @relation(fields: [problemId], references: [id])
+  problemId Int
+  alias     String   // A / B / C ...
+  order     Int      @default(0)
+  score     Int      @default(100) // IOI/OI 用
+
+  @@id([contestId, problemId])
+  @@unique([contestId, alias])
+}
+
+model ContestRegistration {
+  contest      Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  contestId    Int
+  user         User     @relation(fields: [userId], references: [id])
+  userId       Int
+  registeredAt DateTime @default(now())
+
+  @@id([contestId, userId])
+}
+
+model Post {
+  id        Int      @id @default(autoincrement())
+  kind      PostKind @default(DISCUSSION)
+  title     String
+  body      String   // markdown
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  Int
+  problem   Problem? @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  problemId Int?
+  contest   Contest? @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  contestId Int?
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  comments  Comment[]
+
+  @@index([problemId, createdAt])
+  @@index([contestId, createdAt])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    Int
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  Int
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+}

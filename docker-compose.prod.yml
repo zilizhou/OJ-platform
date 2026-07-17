@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: docker.m.daocloud.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-oj}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oj}
+      POSTGRES_DB: ${POSTGRES_DB:-oj}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: docker.m.daocloud.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-ojadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-ojadmin12345}
+    # 不外露端口,只供集群内访问;如需控制台改成 "9011:9001"
+    volumes:
+      - minio_data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oj}:${POSTGRES_PASSWORD:-oj}@postgres:5432/${POSTGRES_DB:-oj}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:?must set in .env}
+      API_PORT: 3001
+      OJ_PUBLIC_ORIGIN: ${OJ_PUBLIC_ORIGIN:-https://oj.z-xin.net}
+      # 知新芸 OAuth
+      ZXY_CLIENT_ID: ${ZXY_CLIENT_ID:-pending}
+      ZXY_CLIENT_SECRET: ${ZXY_CLIENT_SECRET:-pending}
+      ZXY_REDIRECT_URI: ${ZXY_REDIRECT_URI:-https://oj.z-xin.net/api/auth/oauth/zxy/callback}
+      ZXY_AUTHORIZE_URL: ${ZXY_AUTHORIZE_URL:-https://auth.z-xin.net/oauth2/authorize}
+      ZXY_TOKEN_URL: ${ZXY_TOKEN_URL:-https://auth.z-xin.net/api/oauth2/token}
+      ZXY_USERINFO_URL: ${ZXY_USERINFO_URL:-https://auth.z-xin.net/api/oauth2/userinfo}
+      ZXY_SSO_AUTH_URL: ${ZXY_SSO_AUTH_URL:-https://auth.z-xin.net/api/sso/auth}
+      ZXY_SSO_CHECK_TICKET_URL: ${ZXY_SSO_CHECK_TICKET_URL:-https://auth.z-xin.net/api/sso/checkTicket}
+      # 知新芸服务端调 /api/integrations/* 用的 API Key
+      # 留空则 /api/integrations/* 全部 403,设置后才启用
+      INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:-}
+      MINIO_HOST: minio
+      MINIO_PORT: 9000
+      MINIO_USER: ${MINIO_USER:-ojadmin}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:-ojadmin12345}
+    depends_on: [postgres, redis, minio]
+    deploy:
+      replicas: 2
+
+  judge:
+    build:
+      context: .
+      dockerfile: apps/judge/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oj}:${POSTGRES_PASSWORD:-oj}@postgres:5432/${POSTGRES_DB:-oj}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JUDGE_CONCURRENCY: 2
+      JUDGE_RELAXED_SANDBOX: "1"
+      MINIO_HOST: minio
+      MINIO_PORT: 9000
+      MINIO_USER: ${MINIO_USER:-ojadmin}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:-ojadmin12345}
+    volumes:
+      # 兄弟容器模式: Judge 通过宿主 docker.sock 拉起判题沙箱
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 工作目录必须宿主可见,沙箱才能 bind-mount 到代码
+      - /tmp:/tmp
+    depends_on: [postgres, redis, api]
+    deploy:
+      replicas: 2
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "127.0.0.1:34080:80"
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:

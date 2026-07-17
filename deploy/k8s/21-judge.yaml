@@ -1,0 +1,35 @@
+# 判题机依赖宿主 docker.sock 调度沙箱容器,因此使用 privileged + hostPath。
+# 更安全的生产方案是把节点划入专用 NodePool,加污点和 NetworkPolicy 隔离。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: judge
+  namespace: oj
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: judge } }
+  template:
+    metadata: { labels: { app: judge } }
+    spec:
+      # 仅调度到打了 oj-judge=true 标签的专用节点
+      nodeSelector:
+        oj-judge: "true"
+      containers:
+        - name: judge
+          image: oj/judge:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oj-config } }
+            - { secretRef: { name: oj-secrets } }
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - { name: docker-sock, mountPath: /var/run/docker.sock }
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "4",    memory: "2Gi" }
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
