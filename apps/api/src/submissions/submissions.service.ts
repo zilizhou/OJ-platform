@@ -225,10 +225,13 @@ export class SubmissionsService {
     return result;
   }
 
-  list(params: { userId?: number; problemId?: number; limit?: number }) {
+  list(params: { userId: number; problemId?: number; limit?: number }) {
     const { userId, problemId, limit = 50 } = params;
     return this.prisma.submission.findMany({
-      where: { userId, problemId },
+      where: {
+        userId,
+        ...(problemId != null && !Number.isNaN(problemId) ? { problemId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 100),
       select: {

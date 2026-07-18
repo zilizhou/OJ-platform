@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Table, Tag } from 'antd';
+import { Empty, Table, Tag } from 'antd';
 import { Link } from 'react-router-dom';
 import { api, SubmissionRow } from '../api';
+import { useAuth } from '../store';
 
 const STATUS_COLOR: Record<string, string> = {
   Pending: 'default',
@@ -17,15 +18,24 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function Submissions() {
+  const { user } = useAuth();
   const [data, setData] = useState<SubmissionRow[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
 
   useEffect(() => {
+    if (!user) {
+      setData([]);
+      return;
+    }
     const load = () => api.get<SubmissionRow[]>('/submissions').then((r) => setData(r.data));
     load();
     const timer = setInterval(load, 2000);
     return () => clearInterval(timer);
-  }, []);
+  }, [user]);
+
+  if (!user) {
+    return <Empty description="登录后可查看自己的提交记录" />;
+  }
 
   return (
     <Table
@@ -40,11 +50,6 @@ export default function Submissions() {
           title: '#',
           width: 80,
           render: (_, __, index) => (pagination.current - 1) * pagination.pageSize + index + 1,
-        },
-        {
-          title: '用户',
-          width: 120,
-          render: (_, r) => <Link to={`/users/${r.user.username}`}>{r.user.username}</Link>,
         },
         { title: '题目', render: (_, r) => <Link to={`/problems/${r.problemId}`}>{r.problem.title}</Link> },
         { title: '语言', dataIndex: 'language', width: 100 },

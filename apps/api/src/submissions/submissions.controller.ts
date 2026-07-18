@@ -57,21 +57,22 @@ export class SubmissionsController {
     );
   }
 
-  @Get(':id')
-  get(@Param('id', ParseIntPipe) id: number) {
-    return this.submissions.get(id);
-  }
-
+  @UseGuards(JwtAuthGuard)
   @Get()
   list(
-    @Query('userId') userId?: string,
+    @Req() req: any,
     @Query('problemId') problemId?: string,
     @Query('limit') limit?: string,
   ) {
     return this.submissions.list({
-      userId: userId ? Number(userId) : undefined,
+      userId: req.user.userId,
       problemId: problemId ? Number(problemId) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  @Get(':id')
+  get(@Param('id', ParseIntPipe) id: number) {
+    return this.submissions.get(id);
   }
 }

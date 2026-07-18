@@ -53,11 +53,12 @@ const LANG_OPTIONS = [
   { value: 'javascript', label: 'JavaScript (Node 20)' },
 ];
 
+/** 各语言编辑器默认空白，不预填示例代码 */
 const DEFAULT_CODE: Record<string, string> = {
-  cpp: '#include <iostream>\nusing namespace std;\nint main() {\n    int a, b;\n    cin >> a >> b;\n    cout << a + b << endl;\n    return 0;\n}\n',
-  python: 'a, b = map(int, input().split())\nprint(a + b)\n',
-  java: 'import java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int a = sc.nextInt(), b = sc.nextInt();\n        System.out.println(a + b);\n    }\n}\n',
-  javascript: "const data = require('fs').readFileSync(0, 'utf-8').trim().split(/\\s+/).map(Number);\nconsole.log(data[0] + data[1]);\n",
+  cpp: '',
+  python: '',
+  java: '',
+  javascript: '',
 };
 
 const MONACO_LANG: Record<string, string> = {
